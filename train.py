@@ -37,10 +37,11 @@ print('The state for the first agent looks like:', states[0])
 
 from agent import Agent
 
-agent = Agent(state_size=state_size, action_size=action_size, random_seed=4)
+agent1 = Agent(state_size=state_size, action_size=action_size, random_seed=4)
+agent2 = Agent(state_size=state_size, action_size=action_size, random_seed=4)
 
 
-def ddpg(n_episodes=1000000, max_steps=10000):
+def ddpg(n_episodes=1000000, max_steps=10000, multi_agent=False, multi_replay=False, split_replay=False):
     scores_mean = deque(maxlen=100)
     scores = []
     best_score = 0
@@ -51,16 +52,35 @@ def ddpg(n_episodes=1000000, max_steps=10000):
         states = env_info.vector_observations            
         scores_agents = np.zeros(num_agents)             
         score = 0
-        agent.reset()
+        if multi_agent:
+            agent1.reset()
+            agent2.reset()
+        else:
+            agent1.reset()
+
         for step in range(max_steps):
-            actions = agent.act(states)
-            env_info = env.step(actions)[brain_name]     
-            next_states = env_info.vector_observations   
-            rewards = env_info.rewards                   
-            dones = env_info.local_done                  
-            agent.step(states, actions, rewards, next_states, dones, step)
-            states = next_states
-            scores_agents += rewards
+            if multi_agent:
+                actions = np.random.randn(num_agents, action_size)
+                actions[0] = agent1.act(states[0])                  # select an action (for each agent)
+                actions[1] = agent2.act(states[1])
+            else: 
+                actions = agent1.act(states)
+                env_info = env.step(actions)[brain_name]     
+                next_states = env_info.vector_observations   
+                rewards = env_info.rewards                   
+                dones = env_info.local_done
+            if multi_replay:
+                if split_replay:
+                    agent1.step(states[0], actions[0], rewards[0], next_states[0], dones[0], step)
+                    agent2.step(states[1], actions[1], rewards[1], next_states[1], dones[1], step)
+                else:
+                    agent1.step(states, actions, rewards, next_states, dones, step)
+                    agent2.step(states, actions, rewards, next_states, dones, step)
+                
+            else:             
+                agent1.step(states, actions, rewards, next_states, dones, step)
+                states = next_states
+                scores_agents += rewards
             if np.any(dones):
                 break
 
@@ -76,8 +96,12 @@ def ddpg(n_episodes=1000000, max_steps=10000):
             print("Episode:{}, Low Score:{:.2f}, High Score:{:.2f}, Score:{:.2f}, Best Score:{:.2f}, Average Score:{:.2f}, Best Avg Score:{:.2f}".format(i_episode, scores_agents.min(), scores_agents.max(), score, best_score, average_score, best_average_score))
         if average_score > 0.5:
             print("Episode:{}, Low Score:{:.2f}, High Score:{:.2f}, Score:{:.2f}, Best Score:{:.2f}, Average Score:{:.2f}, Best Avg Score:{:.2f}".format(i_episode, scores_agents.min(), scores_agents.max(), score, best_score, average_score, best_average_score))
-            torch.save(agent.actor_local.state_dict(), 'checkpoint_actor.pth')
-            torch.save(agent.critic_local.state_dict(), 'checkpoint_critic.pth')            
+            torch.save(agent1.actor_local.state_dict(), 'checkpoint_actor.pth')
+            torch.save(agent1.critic_local.state_dict(), 'checkpoint_critic.pth') 
+            if multi_agent:
+                torch.save(agent1.actor_local.state_dict(), 'checkpoint_actor.pth')
+                torch.save(agent1.critic_local.state_dict(), 'checkpoint_critic.pth')
+
             break
     return scores
 

@@ -9,6 +9,14 @@ import torch
 import torch.nn.functional as F
 import torch.optim as optim
 
+#BUFFER_SIZE = int(1e6)  # replay buffer size
+#BATCH_SIZE = 1024     # minibatch size
+#GAMMA = 0.99            # discount factor
+#TAU = 1e-3              # for soft update of target parameters
+#LR_ACTOR = 1e-4         # learning rate of the actor 
+#LR_CRITIC = 1e-3        # learning rate of the critic
+#WEIGHT_DECAY = 0        # L2 weight decay
+
 BUFFER_SIZE = int(1e6)  # replay buffer size
 BATCH_SIZE = 1024     # minibatch size
 GAMMA = 0.99            # discount factor
@@ -17,12 +25,13 @@ LR_ACTOR = 1e-4         # learning rate of the actor
 LR_CRITIC = 1e-3        # learning rate of the critic
 WEIGHT_DECAY = 0        # L2 weight decay
 
+
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 class Agent():
     """Interacts with and learns from the environment."""
     
-    def __init__(self, state_size, action_size, random_seed):
+    def __init__(self, state_size, action_size, random_seed, mnoise=True, split_state=True):
         """Initialize an Agent object.
         
         Params
@@ -34,6 +43,8 @@ class Agent():
         self.state_size = state_size
         self.action_size = action_size
         self.seed = random.seed(random_seed)
+        self.mnoise = mnoise
+        self.split_state = split_state
 
         # Actor Network (w/ Target Network)
         self.actor_local = Actor(state_size, action_size, random_seed).to(device)
@@ -45,9 +56,15 @@ class Agent():
         self.critic_target = Critic(state_size, action_size, random_seed).to(device)
         self.critic_optimizer = optim.Adam(self.critic_local.parameters(), lr=LR_CRITIC, weight_decay=WEIGHT_DECAY)
 
+        # initialize targets same as original networks
+        self.hard_update(self.actor_target, self.actor_local)
+        self.hard_update(self.critic_target, self.critic_local)
+
         # Noise process
-        #self.noise = OUNoise(action_size, random_seed)
-        self.noise = OUNoise((2, action_size), random_seed)
+        if self.mnoise:
+            self.noise = OUNoise((2, action_size), random_seed)
+        else:
+            self.noise = OUNoise(action_size, random_seed)
 
         # Replay memory
         self.memory = ReplayBuffer(action_size, BUFFER_SIZE, BATCH_SIZE, random_seed)
@@ -57,8 +74,11 @@ class Agent():
     def step(self, states, actions, rewards, next_states, dones, step):
         """Save experience in replay memory, and use random sample from buffer to learn."""
         # Save experience / reward
-        for state, action, reward, next_state, done in zip(states, actions, rewards, next_states, dones):
-            self.memory.add(state, action, reward, next_state, done) 
+        if self.split_state:
+            for state, action, reward, next_state, done in zip(states, actions, rewards, next_states, dones):
+                self.memory.add(state, action, reward, next_state, done)
+        else:
+            self.memory.add(states, actions, rewards, next_states, dones)
 
         # Learn, if enough samples are available in memory
         if len(self.memory) > BATCH_SIZE:
@@ -142,4 +162,15 @@ class Agent():
         """
         for target_param, local_param in zip(target_model.parameters(), local_model.parameters()):
             target_param.data.copy_(tau*local_param.data + (1.0-tau)*target_param.data)
+
+    
+    def hard_update(self, target, source):
+        """
+        Copy network parameters from source to target
+        Inputs:
+            target (torch.nn.Module): Net to copy parameters to
+            source (torch.nn.Module): Net whose parameters to copy
+        """
+        for target_param, param in zip(target.parameters(), source.parameters()):
+            target_param.data.copy_(param.data)
 
