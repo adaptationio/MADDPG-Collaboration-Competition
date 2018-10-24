@@ -29,7 +29,7 @@ The environment is considered solved, when the average (over 100 episodes) of th
 	```
 - Install requirements:
     ```bash
-    clone git https://github.com/adaptationio/MADDPG-Colaboration-Competition.git
+    clone git https://github.com/adaptationio/MADDPG-Collaboration-Competition.git
     cd MADDPG-Colaboration-Competition
 	pip install .
 	```
